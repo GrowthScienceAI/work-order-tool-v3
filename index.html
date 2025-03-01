@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Work Order Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .work-order {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-top: 20px;
+            background-color: #fff;
+        }
+        .work-order h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 20pt;
+        }
+        .work-order table {
+            width: 100%;
+            margin-bottom: 20px;
+            border-collapse: collapse;
+        }
+        .work-order table th, 
+        .work-order table td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+            font-size: 20pt;
+        }
+        .work-order table th {
+            background-color: #f5f5f5;
+        }
+        .saved-order-btn {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        #fontSizeNotice {
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            font-style: italic;
+            color: #495057;
+        }
+        #printButton {
+            margin-bottom: 15px;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .container, .work-order {
+                width: 100%;
+                max-width: 100%;
+                margin: 0;
+                padding: 0;
+                border: none;
+            }
+            .work-order table th, 
+            .work-order table td {
+                font-size: 20pt;
+                padding: 5px 8px;
+                line-height: 1.3;
+            }
+            body {
+                padding: 0;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">Work Order Generator</h1>
+        
+        <div id="fontSizeNotice" class="no-print">
+            <strong>Note:</strong> All text in the work order output is displayed in 20pt font for better readability.
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <h3>Email Content</h3>
+                <div class="mb-3">
+                    <textarea id="emailContent" class="form-control" rows="15" placeholder="Paste email content here..."></textarea>
+                </div>
+                <div class="mb-3">
+                    <button id="extractBtn" class="btn btn-primary">Extract Work Order</button>
+                    <button id="saveBtn" class="btn btn-success">Save Work Order</button>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <h3>Work Order Preview</h3>
+                <button id="printButton" class="btn btn-outline-secondary no-print">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-printer" viewBox="0 0 16 16">
+                        <path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/>
+                        <path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/>
+                    </svg> 
+                    Print Work Order
+                </button>
+                <div id="workOrderPreview"></div>
+            </div>
+        </div>
+        
+        <hr class="my-4 no-print">
+        
+        <div class="row no-print">
+            <div class="col-12">
+                <h3>Saved Work Orders</h3>
+                <div id="savedWorkOrders" class="d-flex flex-wrap"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Main application code
+        const emailContentTextarea = document.getElementById('emailContent');
+        const extractBtn = document.getElementById('extractBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const workOrderPreview = document.getElementById('workOrderPreview');
+        const savedWorkOrders = document.getElementById('savedWorkOrders');
+        const printButton = document.getElementById('printButton');
+        
+        let currentWorkOrder = null;
+        let savedOrders = [];
+        
+        // Load saved orders from localStorage
+        function loadSavedOrders() {
+            const saved = localStorage.getItem('savedWorkOrders');
+            if (saved) {
+                savedOrders = JSON.parse(saved);
+                renderSavedOrders();
+            }
+        }
+        
+        // Save orders to localStorage
+        function saveOrdersToStorage() {
+            localStorage.setItem('savedWorkOrders', JSON.stringify(savedOrders));
+        }
+        
+        // Render saved order buttons
+        function renderSavedOrders() {
+            savedWorkOrders.innerHTML = '';
+            savedOrders.forEach((order, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-outline-primary saved-order-btn';
+                btn.textContent = `${order.data.from || 'Unknown'} - ${order.data.subject || 'No Subject'} (${new Date(order.timestamp).toLocaleDateString()})`;
+                btn.addEventListener('click', () => loadWorkOrder(index));
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                deleteBtn.innerHTML = '&times;';
+                deleteBtn.style.marginLeft = '5px';
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteWorkOrder(index);
+                });
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = 'mb-2 me-2';
+                wrapper.appendChild(btn);
+                wrapper.appendChild(deleteBtn);
+                savedWorkOrders.appendChild(wrapper);
+            });
+        }
+        
+        // Load a work order from saved orders
+        function loadWorkOrder(index) {
+            const order = savedOrders[index];
+            currentWorkOrder = order;
+            renderWorkOrder(order);
+        }
+        
+        // Delete a work order
+        function deleteWorkOrder(index) {
+            if (confirm('Are you sure you want to delete this work order?')) {
+                savedOrders.splice(index, 1);
+                saveOrdersToStorage();
+                renderSavedOrders();
+            }
+        }
+        
+        // Format the work order HTML
+        function formatWorkOrder(data) {
+            let html = `
+                <div class="work-order">
+                    <h3>Work Order</h3>
+                    <table>
+                        <tr>
+                            <th>From:</th>
+                            <td>${data.from || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Subject:</th>
+                            <td>${data.subject || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <th>Date:</th>
+                            <td>${data.date || new Date().toLocaleDateString()}</td>
+                        </tr>
+                    </table>
+                    
+                    <h3>Line Items</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Quantity</th>
+                                <th>Product</th>
+                                <th>Flavor</th>
+                                <th>Strength</th>
+                                <th>Color/Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            if (data.lineItems && data.lineItems.length > 0) {
+                data.lineItems.forEach(item => {
+                    html += `
+                        <tr>
+                            <td>${item.quantity || 'N/A'}</td>
+                            <td>${item.product || 'N/A'}</td>
+                            <td>${item.flavor || 'N/A'}</td>
+                            <td>${item.strength || 'N/A'}</td>
+                            <td>${item.color || 'N/A'}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                html += `
+                    <tr>
+                        <td colspan="5">No line items found</td>
+                    </tr>
+                `;
+            }
+            
+            html += `
+                        </tbody>
+                    </table>
+            `;
+            
+            if (data.additionalInfo) {
+                html += `
+                    <h3>Additional Information</h3>
+                    <p>${data.additionalInfo.replace(/\n/g, '<br>')}</p>
+                `;
+            }
+            
+            html += `</div>`;
+            
+            return html;
+        }
+        
+        // Render the work order to the preview
+        function renderWorkOrder(order) {
+            workOrderPreview.innerHTML = formatWorkOrder(order.data);
+        }
+        
+        // Save the current work order
+        function saveWorkOrder() {
+            if (!currentWorkOrder) {
+                alert('No work order to save!');
+                return;
+            }
+            
+            // Check if this order already exists (by comparing email text)
+            const exists = savedOrders.findIndex(order => 
+                order.emailText === currentWorkOrder.emailText
+            );
+            
+            if (exists >= 0) {
+                if (confirm('This work order already exists. Do you want to update it?')) {
+                    savedOrders[exists] = currentWorkOrder;
+                }
+            } else {
+                savedOrders.push(currentWorkOrder);
+            }
+            
+            saveOrdersToStorage();
+            renderSavedOrders();
+            alert('Work order saved!');
+        }
+        
+        // Extract work order from email text
+        function extractWorkOrder() {
+            const emailText = emailContentTextarea.value.trim();
+            
+            if (!emailText) {
+                alert('Please enter email content first!');
+                return;
+            }
+            
+            const result = EmailParser.extractWorkOrderData(emailText);
+            
+            if (result.success) {
+                currentWorkOrder = {
+                    data: result.data,
+                    emailText: emailText,
+                    timestamp: new Date().getTime()
+                };
+                renderWorkOrder(currentWorkOrder);
+            } else {
+                alert(`Could not extract work order: ${result.message}`);
+                workOrderPreview.innerHTML = `<div class="alert alert-warning">
+                    <strong>Extraction Error:</strong> ${result.message}
+                </div>`;
+            }
+        }
+        
+        // Set up event listeners
+        extractBtn.addEventListener('click', extractWorkOrder);
+        saveBtn.addEventListener('click', saveWorkOrder);
+        printButton.addEventListener('click', () => {
+            window.print();
+        });
+        
+        // Utility class for parsing emails
+        const EmailParser = {
+            extractWorkOrderData: function(emailText) {
+                const result = {
+                    from: null,
+                    subject: null,
+                    date: null,
+                    lineItems: [],
+                    additionalInfo: null
+                };
+                
+                // Extract basic email headers
+                result.from = this.extractWithPattern(emailText, /From:\s*([^\n]+)/i);
+                result.subject = this.extractWithPattern(emailText, /Subject:\s*([^\n]+)/i);
+                result.date = this.extractWithPattern(emailText, /Date:\s*([^\n]+)/i);
+                
+                // Extract product line items
+                const lines = emailText.split(/\r?\n/);
+                let additionalInfo = [];
+                let potentialProductLines = [];
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    
+                    // Match product line items like "35k - Green Apple (5mg, green)"
+                    const productMatch = line.match(/(\d+k)\s*-\s*([^(]+)\s*\((\d+mg),\s*([^)]+)\)/i);
+                    if (productMatch) {
+                        result.lineItems.push({
+                            quantity: productMatch[1].trim(),
+                            product: 'Gummy',
+                            flavor: productMatch[2].trim(),
+                            strength: productMatch[3].trim(),
+                            color: productMatch[4].trim()
+                        });
+                        continue;
+                    }
+                    
+                    // Match alternative product format like "Orange (Sativa): 2.5MG THC + 5MG CBC"
+                    const alternativeProductMatch = line.match(/([^(]+)\s*\(([^)]+)\):\s*([\d.]+MG\s*THC\s*\+\s*[\d.]+MG\s*[A-Z]+)/i);
+                    if (alternativeProductMatch) {
+                        result.lineItems.push({
+                            quantity: '35k', // Default quantity if not specified
+                            product: 'Gummy',
+                            flavor: alternativeProductMatch[1].trim(),
+                            strength: alternativeProductMatch[3].trim(),
+                            color: alternativeProductMatch[2].trim()
+                        });
+                        continue;
+                    }
+                    
+                    // Collect potential product lines for further processing
+                    if (line.includes('MG THC') || line.includes('mg THC')) {
+                        potentialProductLines.push(line);
+                        continue;
+                    }
+                    
+                    // Match non-meds line
+                    if (line.toLowerCase().includes('non meds')) {
+                        result.lineItems.push({
+                            product: 'Non meds',
+                            notes: line
+                        });
+                        continue;
+                    }
+                    
+                    // Match quantity for multiple flavors
+                    const qtyMatch = line.match(/(\d+k)\s+each\s+of\s+all\s+(\d+)\s+flavors/i);
+                    if (qtyMatch) {
+                        result.multipleFlavorQty = qtyMatch[1];
+                        result.flavorCount = qtyMatch[2];
+                        continue;
+                    }
+                    
+                    // Collect additional information
+                    if (i > 4 && line.length > 15 && !line.startsWith('From:') && !line.startsWith('To:') && !line.startsWith('Date:') && !line.startsWith('Subject:')) {
+                        additionalInfo.push(line);
+                    }
+                }
+                
+                // Process potential product lines from additional info
+                if (result.lineItems.length === 0 && potentialProductLines.length > 0) {
+                    potentialProductLines.forEach(line => {
+                        // Try to match in a more lenient way
+                        const flavorMatch = line.match(/([^(:]+)/);
+                        const strengthMatch = line.match(/([\d.]+MG\s*THC\s*\+\s*[\d.]+MG\s*[A-Z]+)/i);
+                        const typeMatch = line.match(/\(([^)]+)\)/);
+                        
+                        if (flavorMatch) {
+                            result.lineItems.push({
+                                quantity: '35k', // Default quantity if not specified
+                                product: 'Gummy',
+                                flavor: flavorMatch[1].trim(),
+                                strength: strengthMatch ? strengthMatch[1].trim() : 'N/A',
+                                color: typeMatch ? typeMatch[1].trim() : 'N/A'
+                            });
+                        }
+                    });
+                }
+                
+                // Add additional information
+                if (additionalInfo.length > 0) {
+                    result.additionalInfo = additionalInfo.join('\n');
+                } 
+                
+                // If no line items were detected using regular patterns, try advanced parsing
+                if (result.lineItems.length === 0) {
+                    // Look for any lines that might contain product information
+                    // by scanning for keywords like "flavor", "strain", "THC", "CBD", etc.
+                    const keywordLines = [];
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim().toLowerCase();
+                        if (line.length > 5 && (
+                            line.includes('flavor') || 
+                            line.includes('strain') || 
+                            line.includes('thc') || 
+                            line.includes('cbd') || 
+                            line.includes('cbc') || 
+                            line.includes('cbn') || 
+                            line.includes('cbg') || 
+                            line.includes('mg') || 
+                            line.includes('gummy') || 
+                            line.includes('apple') || 
+                            line.includes('berry') || 
+                            line.includes('orange') || 
+                            line.includes('grape') || 
+                            line.includes('strawberry') || 
+                            line.includes('raspberry') ||
+                            line.includes('sativa') ||
+                            line.includes('indica') ||
+                            line.includes('hybrid')
+                        )) {
+                            keywordLines.push(lines[i].trim());
+                        }
+                    }
+                    
+                    // Process these keyword lines for potential products
+                    if (keywordLines.length > 0) {
+                        console.log("Trying advanced parsing with keyword detection...");
+                        
+                        // Simple product extraction attempt
+                        keywordLines.forEach(line => {
+                            // Extract flavor - look for common fruit/flavor names
+                            let flavor = null;
+                            const flavorPatterns = [
+                                /orange/i, /apple/i, /grape/i, /strawberry/i, 
+                                /raspberry/i, /blue raspberry/i, /cherry/i, /lemon/i, 
+                                /watermelon/i, /mango/i, /peach/i, /blueberry/i
+                            ];
+                            
+                            for (const pattern of flavorPatterns) {
+                                const match = line.match(pattern);
+                                if (match) {
+                                    flavor = match[0];
+                                    break;
+                                }
+                            }
+                            
+                            // Extract strain type
+                            let strainType = null;
+                            if (line.match(/sativa/i)) strainType = 'Sativa';
+                            else if (line.match(/indica/i)) strainType = 'Indica';
+                            else if (line.match(/hybrid/i)) strainType = 'Hybrid';
+                            else if (line.match(/sleep/i)) strainType = 'Sleep';
+                            
+                            // Extract strength - look for THC + something else pattern
+                            const strengthMatch = line.match(/([\d.]+\s*mg\s*thc\s*[\+]?\s*(?:[\d.]+\s*mg\s*[a-z]+)?)/i) || 
+                                                 line.match(/([\d.]+\s*MG\s*THC\s*[\+]?\s*(?:[\d.]+\s*MG\s*[A-Z]+)?)/i);
+                            
+                            // If we have either flavor or strength, it's likely a product line
+                            if (flavor || strengthMatch) {
+                                result.lineItems.push({
+                                    quantity: '35k', // Default quantity if not specified
+                                    product: 'Gummy',
+                                    flavor: flavor || 'Unknown Flavor',
+                                    strength: strengthMatch ? strengthMatch[0] : 'Unknown Strength',
+                                    color: strainType || 'N/A'
+                                });
+                            }
+                        });
+                    }
+                    
+                    // If still no results, parse the entire additional info section
+                    // for potential product information (useful when all product info
+                    // is in a paragraph rather than line-by-line)
+                    if (result.lineItems.length === 0 && result.additionalInfo) {
+                        console.log("Trying to extract products from additional info...");
+                        
+                        // Try to find products defined in format like "Flavor (Type): Strength"
+                        const productLineRegex = /([A-Za-z\s]+)\s*\(([^)]+)\):\s*([\d.]+\s*MG\s*THC\s*\+\s*[\d.]+\s*MG\s*[A-Z]+)/gi;
+                        let match;
+                        
+                        while ((match = productLineRegex.exec(result.additionalInfo)) !== null) {
+                            result.lineItems.push({
+                                quantity: '35k', // Default quantity
+                                product: 'Gummy',
+                                flavor: match[1].trim(),
+                                strength: match[3].trim(),
+                                color: match[2].trim()
+                            });
+                        }
+                    }
+                    
+                    // If still no products found and OpenAI is available, use AI parsing as a last resort
+                    if (result.lineItems.length === 0) {
+                        console.log("Trying AI parsing as a fallback...");
+                        const aiParsed = this.tryAIParsingForProducts(emailText);
+                        if (aiParsed && aiParsed.length > 0) {
+                            result.lineItems = aiParsed;
+                        }
+                    }
+                }
+                
+                // Final check for empty line items - see if we can extract from additional info
+                if (result.lineItems.length === 0 && result.additionalInfo) {
+                    if (result.additionalInfo.includes('THC') || 
+                        result.additionalInfo.includes('flavor') || 
+                        result.additionalInfo.includes('strain') ||
+                        result.additionalInfo.includes('gummy')) {
+                            // Mark for manual review but provide useful info
+                            result.needsReview = true;
+                            result.reviewReason = "Products may be in additional information section but in non-standard format";
+                    }
+                }
+
+                // Check if enough data was extracted to create a valid order
+                const requiredFields = ['from', 'subject'];
+                const missingFields = requiredFields.filter(field => !result[field]);
+                
+                if (missingFields.length > 0 || result.lineItems.length === 0) {
+                    return {
+                        success: false,
+                        message: 'Could not extract required information: ' + (missingFields.length > 0 ? missingFields.join(', ') : 'product details'),
+                        data: result,
+                        missingFields: missingFields.length > 0 ? missingFields : ['product details']
+                    };
+                }
+
+                return {
+                    success: true,
+                    data: result
+                };
+            },
+            
+            // Helper function to try AI parsing for products when regular parsing fails
+            tryAIParsingForProducts: function(emailText) {
+                // This function integrates with OpenAI API to extract product information
+                console.log("Attempting AI parsing with OpenAI...");
+                
+                const OPENAI_API_KEY = "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";
+                
+                // Return a placeholder array initially, then replace with real data when API call completes
+                const placeholderItems = [];
+                
+                // Make the OpenAI API call asynchronously
+                this.callOpenAIForExtraction(emailText)
+                    .then(products => {
+                        console.log("AI-extracted products:", products);
+                        
+                        if (products && products.length > 0) {
+                            // Store the results globally so they can be accessed when the promise resolves
+                            window.aiExtractedProducts = products;
+                            
+                            // Trigger a re-extraction if we have the current email text still available
+                            const currentEmail = document.getElementById('emailContent').value;
+                            if (currentEmail && currentEmail.trim() === emailText.trim()) {
+                                console.log("Re-processing with AI-extracted products");
+                                document.getElementById('extractBtn').click();
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error in AI extraction:", error);
+                    });
+                
+                // Check if we already have results from a previous call
+                if (window.aiExtractedProducts && window.aiExtractedProducts.length > 0) {
+                    return window.aiExtractedProducts;
+                }
+                
+                return placeholderItems;
+            },
+            
+            // Implementation of the OpenAI API call
+            callOpenAIForExtraction: async function(text) {
+                try {
+                    console.log("Calling OpenAI API...");
+                    
+                    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${OPENAI_API_KEY}`
+                        },
+                        body: JSON.stringify({
+                            model: "gpt-4o-mini",
+                            messages: [
+                                {
+                                    role: "system",
+                                    content: `Extract product information from the following email. 
+                                    Return the data as JSON array with objects containing these fields: 
+                                    flavor (string), strength (string), type (string), color (string), quantity (string, optional).
+                                    If the email mentions any cannabinoid products with THC, CBD, CBC, CBN, or CBG, extract those.
+                                    The strength typically looks like "5mg THC" or "2.5MG THC + 5MG CBD".
+                                    The type might be Sativa, Indica, Hybrid, or Sleep.
+                                    Return ONLY the JSON array, no additional text, explanations or markdown.`
+                                },
+                                {
+                                    role: "user",
+                                    content: text
+                                }
+                            ],
+                            temperature: 0.3
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        console.error("OpenAI API error:", errorData);
+                        throw new Error(`OpenAI API error: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log("Raw OpenAI API response:", data);
+                    
+                    // Parse the AI response and convert to product objects
+                    if (data.choices && data.choices.length > 0) {
+                        const aiContent = data.choices[0].message.content.trim();
+                        console.log("AI content:", aiContent);
+                        
+                        // Find JSON in the response (it might be surrounded by markdown code blocks or other text)
+                        let jsonContent = aiContent;
+                        
+                        // Remove markdown code blocks if present
+                        if (aiContent.includes("```json")) {
+                            jsonContent = aiContent.split("```json")[1].split("```")[0].trim();
+                        } else if (aiContent.includes("```")) {
+                            jsonContent = aiContent.split("```")[1].split("```")[0].trim();
+                        }
+                        
+                        try {
+                            // Parse the JSON
+                            const products = JSON.parse(jsonContent);
+                            
+                            // Ensure it's an array
+                            const productsArray = Array.isArray(products) ? products : [products];
+                            
+                            // Convert to our product format
+                            return productsArray.map(p => ({
+                                quantity: p.quantity || '35k',
+                                product: 'Gummy',
+                                flavor: p.flavor || 'Unknown',
+                                strength: p.strength || 'Unknown Strength',
+                                color: p.type || p.color || 'N/A'
+                            }));
+                        } catch (e) {
+                            console.error("Error parsing OpenAI response as JSON:", e, "Content:", jsonContent);
+                            
+                            // Fallback: try to extract with regex if JSON parsing failed
+                            const productMatches = aiContent.match(/flavor[^"]*["']([^"']+)["'][^"]*["']([^"']+)["']/gi);
+                            
+                            if (productMatches && productMatches.length > 0) {
+                                return productMatches.map(match => {
+                                    const flavorMatch = match.match(/flavor[^"]*["']([^"']+)["']/i);
+                                    const strengthMatch = match.match(/strength[^"]*["']([^"']+)["']/i);
+                                    const typeMatch = match.match(/type[^"]*["']([^"']+)["']/i) || match.match(/color[^"]*["']([^"']+)["']/i);
+                                    
+                                    return {
+                                        quantity: '35k',
+                                        product: 'Gummy',
+                                        flavor: flavorMatch ? flavorMatch[1] : 'Unknown',
+                                        strength: strengthMatch ? strengthMatch[1] : 'Unknown Strength',
+                                        color: typeMatch ? typeMatch[1] : 'N/A'
+                                    };
+                                });
+                            }
+                            
+                            return [];
+                        }
+                    }
+                    
+                    return [];
+                } catch (error) {
+                    console.error("Error calling OpenAI API:", error);
+                    return [];
+                }
+            },
+            
+            extractWithPattern: function(text, pattern) {
+                const match = text.match(pattern);
+                return match ? match[1].trim() : null;
+            }
+        };
+
+        // Set up sample data and load saved orders
+        function setupSampleData() {
+            // Standard sample email
+            const standardEmail = `From: Tom Thorpe <tom@yourgrannys.com>
+Date: Tue, Feb 4, 2025 at 3:18 PM
+Subject: Granny's Gummy Re-Order
+To: Mike Handal <mike@kindoasis.com>, Tom Domingo <tom@kindoasis.com>
+
+Hey All,
+We are ready for a gummy re order! Let me know how time frames are looking for turn around. I
+35k - Green Apple (5mg, green)
+35k - Rainbow Sherbet (5mg, Pink)
+30k- Orange Creamsicle (5mg, Orange)
+non meds
+5k each of all 3 flavors
+
+Will have live resin prepped for you ready to go to take up 1mg of each as per our previous
+manufacturing process.
+
+Let me know if any questions or when we need things by to get ready to rip.`;
+
+            // Alternative format sample email
+            const alternativeEmail = `From: Beecher Vaillancourt <beecher@globalorganicdistro.com>
+Date: Thu, Feb 6, 2025 at 8:32 AM
+Subject: Iowa Gummy Order for Beecher Rd 3
+To: Orders <orders@kindoasis.com>
+
+Can you please either add to this current order, or do a 2nd order for me of the below.
+
+Orange (Sativa): 2.5MG THC + 5MG CBC
+Strawberry (Indica): 2.5MG THC + 5MG CBD
+Grape (Sleep): 2.5MG THC + 5MG CBN
+Blue Raspberry (Hybrid): 2.5MG THC + 5MG CBG
+
+Please let me know when these will be ready. I can arrange pickup next week.
+
+Thanks,
+Beecher`;
+
+            // Create a sample selection dropdown
+            const formLabel = document.createElement('div');
+            formLabel.className = 'form-text mb-2';
+            formLabel.textContent = 'Choose a sample email format to test:';
+            
+            const sampleSelect = document.createElement('select');
+            sampleSelect.className = 'form-select mb-3';
+            sampleSelect.id = 'sampleSelect';
+            
+            const option1 = document.createElement('option');
+            option1.value = 'standard';
+            option1.textContent = 'Standard Format (35k - Green Apple)';
+            
+            const option2 = document.createElement('option');
+            option2.value = 'alternative';
+            option2.textContent = 'Alternative Format (Orange (Sativa): 2.5MG THC)';
+            
+            sampleSelect.appendChild(option1);
+            sampleSelect.appendChild(option2);
+            
+            // Add change event to update the textarea
+            sampleSelect.addEventListener('change', function() {
+                if (this.value === 'standard') {
+                    emailContentTextarea.value = standardEmail;
+                } else if (this.value === 'alternative') {
+                    emailContentTextarea.value = alternativeEmail;
+                }
+            });
+            
+            // Insert before the textarea
+            const textareaParent = emailContentTextarea.parentElement;
+            textareaParent.insertBefore(formLabel, emailContentTextarea);
+            textareaParent.insertBefore(sampleSelect, emailContentTextarea);
+            
+            // Set default email content
+            emailContentTextarea.value = standardEmail;
+        }
+        
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            setupSampleData();
+            loadSavedOrders();
+        });
+    </script>
+</body>
+</html>
